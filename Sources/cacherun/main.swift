@@ -47,6 +47,12 @@ do {
     print("cache time \(cacheTime)")
     print("user command: \(userCommand.joined(separator: " "))")
 
+    let executor = CacheExecutor(cacheTime: cacheTime, userCommand: userCommand)
+
+    try executor.runCachedCommand()
+
+    readLine()
+
 } catch {
     print(error.localizedDescription)
     argParser.printUsage(on: Basic.stderrStream)
