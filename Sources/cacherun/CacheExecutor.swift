@@ -13,14 +13,13 @@ public enum CacheExecutorError: Error {
     case hashFailure(String)
     case relativeCommandPathNotAllowed
     case commandNotFound
+    case badCommand(reason: String)
 }
 
 final class CacheExecutor {
     private let cacheTimeInSeconds: Int
     private let command: String
     private let commandArgs: [String]
-    private let taskQueue = DispatchQueue.global(qos: .background)
-
 
     public init(cacheTime: Int, userCommand: [String]) {
         self.cacheTimeInSeconds = cacheTime
@@ -68,36 +67,22 @@ final class CacheExecutor {
             do {
                 try? FileManager.default.removeItem(at: pidFileURL)
             }
-            print("task done!")
         }
 
-        taskQueue.async {
-            do {
-                let outPipe = Pipe()
-                task.standardOutput = outPipe
-
-                NotificationCenter.default.addObserver(
-                    forName: Notification.Name.NSFileHandleDataAvailable,
-                    object: outPipe.fileHandleForReading,
-                    queue: nil
-                ) { notification in
-//                    let output = outPipe.fileHandleForReading.availableData
-//                    let outputString = String(data: output, encoding: String.Encoding.utf8) ?? ""
-//                    print(outputString)
-                    try? outPipe.fileHandleForReading.availableData.write(to: cachedOutputURL)
-                }
-                outPipe.fileHandleForReading.waitForDataInBackgroundAndNotify()
-
-                try task.run()
-                try "\(task.processIdentifier)".write(to: pidFileURL, atomically: true, encoding: .utf8)
-            } catch {
-                print("error in task run \(error.localizedDescription)")
-            }
-            task.waitUntilExit()
-        }
-
+        setupOutputNotification(on: task, cachedOutputURL: cachedOutputURL)
+        try task.run()
+        try "\(task.processIdentifier)".write(to: pidFileURL, atomically: true, encoding: .utf8)
+        task.waitUntilExit()
     }
 
+    private func setupOutputNotification(on task: Process, cachedOutputURL: URL) {
+        let outputPipe = Pipe()
+        task.standardOutput = outputPipe
+        NotificationCenter.default.addObserver(forName: Notification.Name.NSFileHandleDataAvailable, object: outputPipe.fileHandleForReading, queue: nil) { notification in
+            try? outputPipe.fileHandleForReading.availableData.write(to: cachedOutputURL)
+        }
+        outputPipe.fileHandleForReading.waitForDataInBackgroundAndNotify()
+    }
 
     /// checks if the cache time has expired on the existing cache file.
     /// - Parameter pidFileURL: url to the file of the previous run's process id
@@ -148,9 +133,12 @@ final class CacheExecutor {
     }
 
     private static func sha256Hash(for string: String) throws -> String {
-        return "flurm"
-//        guard let stringData = string.data(using: .utf8) else { throw CacheExecutorError.hashFailure(string) }
-//        return SHA256.hash(data: stringData).description
+        guard let stringData = string.data(using: .utf8) else { throw CacheExecutorError.hashFailure(string) }
+        let hash = SHA256.hash(data: stringData)
+        let repr = hash.makeIterator().map { value -> String in
+            String(format: "%02x", value)
+        }
+        return repr.joined()
     }
 
     private static func findCommandURL(command: String, in pathDirs: [String]) -> URL? {

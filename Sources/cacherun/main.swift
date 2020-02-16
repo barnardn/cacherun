@@ -51,7 +51,7 @@ do {
 
     try executor.runCachedCommand()
 
-    readLine()
+//    readLine()
 
 } catch {
     print(error.localizedDescription)
