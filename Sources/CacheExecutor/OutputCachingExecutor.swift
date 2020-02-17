@@ -1,5 +1,5 @@
 //
-//  CacheExecutor.swift
+//  OutputCachingExecutor.swift
 //  
 //
 //  Created by Norman Barnard on 2/15/20.
@@ -15,7 +15,7 @@ public enum CacheExecutorError: Error {
     case systemError(Error)
 }
 
-final class CacheExecutor {
+public final class OutputCachingExecutor {
 
     enum Utility {}
 

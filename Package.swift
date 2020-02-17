@@ -8,6 +8,10 @@ let package = Package(
     platforms: [
         .macOS(.v10_15)
     ],
+    products: [
+        .executable(name: "cacherun", targets: ["cacherun"]),
+        .library(name: "CacheExecutor", targets: ["CacheExecutor"])
+    ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
         // .package(url: /* package url */, from: "1.0.0"),
@@ -20,7 +24,9 @@ let package = Package(
         // Targets can depend on other targets in this package, and on products in packages which this package depends on.
         .target(
             name: "cacherun",
-            dependencies: ["SPMUtility"]),
+            dependencies: ["SPMUtility", "CacheExecutor"]),
+        .target(name: "CacheExecutor",
+                dependencies: ["SPMUtility"]),
         .testTarget(
             name: "cacherunTests",
             dependencies: ["cacherun"]),

@@ -9,7 +9,7 @@ import Foundation
 import Basic
 import CryptoKit
 
-extension CacheExecutor.Utility {
+extension OutputCachingExecutor.Utility {
 
     /// Locate `command` in the user's path verifying that it's executable. If there are multiple
     /// executable commands found, return the first one.

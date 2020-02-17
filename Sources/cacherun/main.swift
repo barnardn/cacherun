@@ -9,6 +9,7 @@
 import Foundation
 import SPMUtility
 import Basic
+import CacheExecutor
 
 let argParser = ArgumentParser(
     commandName: "cacherun",
@@ -44,7 +45,7 @@ do {
         exit(1)
     }
 
-    let executor = CacheExecutor(cacheTime: cacheTime, userCommand: userCommand)
+    let executor = OutputCachingExecutor(cacheTime: cacheTime, userCommand: userCommand)
 
     if case let .failure(executorError) = executor.runCachedCommand() {
         switch executorError {
