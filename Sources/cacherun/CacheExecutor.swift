@@ -25,17 +25,14 @@ final class CacheExecutor {
     public init(cacheTime: Int, userCommand: [String]) {
         self.cacheTimeInSeconds = cacheTime
         self.command = userCommand[0]
-        if userCommand.count > 1 {
-            commandArgs = Array(userCommand[1...])
-        } else {
-            commandArgs = []
-        }
+        commandArgs = userCommand.count > 1 ? Array(userCommand[1...]) : []
     }
 
     /// run the command or return the cached results if the cached output from the last run isn't stale.
     ///
     public func runCachedCommand() -> Result<Bool, CacheExecutorError> {
 
+        // punt on relative paths for now..  maybe use currentDirectory on task path?
         guard !command.starts(with: ".") else {
             return .failure(.badCommand(reason: "Relative path to command not allowed. Use full path or command name only"))
         }
@@ -78,7 +75,6 @@ final class CacheExecutor {
         let task = Process()
         task.executableURL = commandPath
         task.arguments = commandArgs
-        task.environment = ProcessInfo.processInfo.environment
 
         setupOutputNotification(on: task, cachedOutputURL: cachedOutputURL)
         setupErrorOutputNotification(on: task, errorTextStream: stderrStream)
