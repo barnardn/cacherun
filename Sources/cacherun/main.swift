@@ -44,9 +44,6 @@ do {
         exit(1)
     }
 
-    print("cache time \(cacheTime)")
-    print("user command: \(userCommand.joined(separator: " "))")
-
     let executor = CacheExecutor(cacheTime: cacheTime, userCommand: userCommand)
 
     if case let .failure(executorError) = executor.runCachedCommand() {

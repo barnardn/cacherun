@@ -7,6 +7,8 @@
 
 import Foundation
 import var Basic.stdoutStream   // explicit to not collide with Process
+import var Basic.stderrStream
+import protocol Basic.OutputByteStream
 import CryptoKit
 
 public enum CacheExecutorError: Error {
@@ -30,6 +32,8 @@ final class CacheExecutor {
         }
     }
 
+    /// run the command or return the cached results if the cached output from the last run isn't stale.
+    ///
     public func runCachedCommand() -> Result<Bool, CacheExecutorError> {
 
         guard !command.starts(with: ".") else {
@@ -77,25 +81,48 @@ final class CacheExecutor {
         task.environment = ProcessInfo.processInfo.environment
 
         setupOutputNotification(on: task, cachedOutputURL: cachedOutputURL)
+        setupErrorOutputNotification(on: task, errorTextStream: stderrStream)
         try task.run()
         try "\(task.processIdentifier)".write(to: pidFileURL, atomically: true, encoding: .utf8)
         task.waitUntilExit()
     }
 
+
+    /// sets up a notification that reads any available output captured by a pipe that's attached to the
+    /// command stdout. the output is dumped to the cache file and then written to the parent's stdout
+    /// - Parameters:
+    ///   - task: the task to execute
+    ///   - cachedOutputURL: file URL to the cached output file.
+    ///
     private func setupOutputNotification(on task: Process, cachedOutputURL: URL) {
         let outputPipe = Pipe()
         task.standardOutput = outputPipe
         NotificationCenter.default.addObserver(forName: Notification.Name.NSFileHandleDataAvailable, object: outputPipe.fileHandleForReading, queue: nil) { [weak self] notification in
-            self?.showCommandOutput(outputPipe.fileHandleForReading.availableData)
-            try? outputPipe.fileHandleForReading.availableData.write(to: cachedOutputURL)
+            // copy the data from the pipe, since we need it in two places.
+            let commandData = Data(referencing: outputPipe.fileHandleForReading.availableData as NSData)
+            self?.showCommandOutput(commandData)
+            try? commandData.write(to: cachedOutputURL)
         }
         outputPipe.fileHandleForReading.waitForDataInBackgroundAndNotify()
     }
 
-    private func showCommandOutput(_ output: Data?) {
+    private func setupErrorOutputNotification(on task: Process, errorTextStream: TextOutputStream) {
+        let errorPipe = Pipe()
+        task.standardError = errorPipe
+        NotificationCenter.default.addObserver(forName: Notification.Name.NSFileHandleDataAvailable, object: errorPipe.fileHandleForReading, queue: nil) { [weak self] notification in
+            self?.showCommandOutput(errorPipe.fileHandleForReading.availableData, on: stderrStream)
+        }
+        errorPipe.fileHandleForReading.waitForDataInBackgroundAndNotify()
+    }
+
+    /// converts the output of the command to a string and write it to stdout
+    /// - Parameter output: command output
+    ///
+    private func showCommandOutput(_ output: Data?, on stream: OutputByteStream = stdoutStream) {
         guard let output = output else { return }
-        if let textData = String(data: output, encoding: .utf8) {
-            textData.write(to: stdoutStream)
+        if let textData = String(data: output, encoding: .utf8), textData.count > 0 {
+            textData.write(to: stream)
+            stream.flush()
         }
     }
 
@@ -112,15 +139,9 @@ final class CacheExecutor {
         guard FileManager.default.fileExists(atPath: cacheFileURL.path) else { return .success(true) }
 
         do {
-
-            let fileAttributes = try FileManager.default.attributesOfItem(atPath: cacheFileURL.path)
-            guard let modificationDate = fileAttributes[FileAttributeKey.modificationDate] as? Date else { return .success(true) }
-
-            // last modification date more than cacheTimeInSeconds old?
             return .success(
-                Date().timeIntervalSince(modificationDate) > TimeInterval(cacheTimeInSeconds)
+                try CacheExecutor.isStaleFile(at: cacheFileURL, maxAgeInSeconds: TimeInterval(cacheTimeInSeconds))
             )
-
         } catch {
             return .failure(.systemError(error))
         }
@@ -145,6 +166,13 @@ final class CacheExecutor {
     }
 
     // MARK: static methods
+
+    private static func isStaleFile(at url: URL, maxAgeInSeconds maxAge: TimeInterval) throws -> Bool {
+        let fileAttributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        guard let modificationDate = fileAttributes[FileAttributeKey.modificationDate] as? Date else { return true }
+        return Date().timeIntervalSince(modificationDate) > maxAge
+    }
+
 
     private static func createDirectory(at url: URL) -> URL {
         do {
