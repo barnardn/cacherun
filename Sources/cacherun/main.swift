@@ -49,9 +49,17 @@ do {
 
     let executor = CacheExecutor(cacheTime: cacheTime, userCommand: userCommand)
 
-    try executor.runCachedCommand()
-
-//    readLine()
+    if case let .failure(executorError) = executor.runCachedCommand() {
+        switch executorError {
+        case .badCommand(let reason):
+            reason.write(to: Basic.stderrStream)
+        case .hashFailure(let message):
+            message.write(to: Basic.stderrStream)
+        case .systemError(let error):
+            error.localizedDescription.write(to: Basic.stderrStream)
+        }
+        exit(1)
+    }
 
 } catch {
     print(error.localizedDescription)

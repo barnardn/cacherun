@@ -6,14 +6,13 @@
 //
 
 import Foundation
+import var Basic.stdoutStream   // explicit to not collide with Process
 import CryptoKit
-
 
 public enum CacheExecutorError: Error {
     case hashFailure(String)
-    case relativeCommandPathNotAllowed
-    case commandNotFound
     case badCommand(reason: String)
+    case systemError(Error)
 }
 
 final class CacheExecutor {
@@ -31,43 +30,51 @@ final class CacheExecutor {
         }
     }
 
-    public func runCachedCommand() throws {
+    public func runCachedCommand() -> Result<Bool, CacheExecutorError> {
 
-        guard !command.starts(with: ".") else { throw CacheExecutorError.relativeCommandPathNotAllowed }
+        guard !command.starts(with: ".") else {
+            return .failure(.badCommand(reason: "Relative path to command not allowed. Use full path or command name only"))
+        }
 
         let rundir = checkRunDirAndCreate()
-        print("Rundir is: \(rundir.path)")
-        let commandHash = try CacheExecutor.sha256Hash(for: ([command] + commandArgs).joined(separator: " "))
-        let pidFileURL = rundir.appendingPathComponent("\(commandHash).pid")
-        let cachedOutputURL = rundir.appendingPathComponent("\(commandHash).data")
-        guard try shouldUpdateCache(pidFileURL: pidFileURL, cacheFileURL: cachedOutputURL) else { return  }
+        do {
 
-        let commandURL: URL
-        if command.contains("/") {
-            commandURL = URL(fileURLWithPath: command)
-        } else {
-            guard
-                let pathSpec = ProcessInfo.processInfo.environment["PATH"],
-                let url = CacheExecutor.findCommandURL(command: command, in: pathSpec.components(separatedBy: ":"))
-            else {
-                throw CacheExecutorError.commandNotFound
+            let commandHash = try CacheExecutor.sha256Hash(for: ([command] + commandArgs).joined(separator: " "))
+            let pidFileURL = rundir.appendingPathComponent("\(commandHash).pid")
+            let cachedOutputURL = rundir.appendingPathComponent("\(commandHash).data")
+
+            switch shouldUpdateCache(pidFileURL: pidFileURL, cacheFileURL: cachedOutputURL) {
+            case .success(let shouldRun):
+                if !shouldRun {
+                    showCommandOutput(try? Data(contentsOf: cachedOutputURL))
+                    return .success(true)
+                }
+            case .failure(let error):
+                return .failure(error)
             }
-            commandURL = url
+
+            guard let commandURL = CacheExecutor.findCommand(command: command) else {
+                return .failure(.badCommand(reason: "\(command) is not a valid path or command name"))
+            }
+
+            try execute(commandPath: commandURL, pidFileURL: pidFileURL, cachedOutputURL: cachedOutputURL)
+            return .success(true)
+
+        } catch CacheExecutorError.hashFailure(let message) {
+            return .failure(.hashFailure(message))
+        } catch {
+            return .failure(.systemError(error))
         }
-        try execute(commandPath: commandURL, pidFileURL: pidFileURL, cachedOutputURL: cachedOutputURL)
     }
 
     private func execute(commandPath: URL, pidFileURL: URL, cachedOutputURL: URL) throws {
+
+        defer { try? FileManager.default.removeItem(at: pidFileURL) }
 
         let task = Process()
         task.executableURL = commandPath
         task.arguments = commandArgs
         task.environment = ProcessInfo.processInfo.environment
-        task.terminationHandler = { task in
-            do {
-                try? FileManager.default.removeItem(at: pidFileURL)
-            }
-        }
 
         setupOutputNotification(on: task, cachedOutputURL: cachedOutputURL)
         try task.run()
@@ -78,10 +85,18 @@ final class CacheExecutor {
     private func setupOutputNotification(on task: Process, cachedOutputURL: URL) {
         let outputPipe = Pipe()
         task.standardOutput = outputPipe
-        NotificationCenter.default.addObserver(forName: Notification.Name.NSFileHandleDataAvailable, object: outputPipe.fileHandleForReading, queue: nil) { notification in
+        NotificationCenter.default.addObserver(forName: Notification.Name.NSFileHandleDataAvailable, object: outputPipe.fileHandleForReading, queue: nil) { [weak self] notification in
+            self?.showCommandOutput(outputPipe.fileHandleForReading.availableData)
             try? outputPipe.fileHandleForReading.availableData.write(to: cachedOutputURL)
         }
         outputPipe.fileHandleForReading.waitForDataInBackgroundAndNotify()
+    }
+
+    private func showCommandOutput(_ output: Data?) {
+        guard let output = output else { return }
+        if let textData = String(data: output, encoding: .utf8) {
+            textData.write(to: stdoutStream)
+        }
     }
 
     /// checks if the cache time has expired on the existing cache file.
@@ -89,18 +104,26 @@ final class CacheExecutor {
     /// - Parameter cacheFileURL: url to the previous run's output
     /// - Returns: true of time expired or cacheFile doesn't exist
     ///
-    private func shouldUpdateCache(pidFileURL: URL, cacheFileURL: URL) throws -> Bool {
+    private func shouldUpdateCache(pidFileURL: URL, cacheFileURL: URL) -> Result<Bool, CacheExecutorError> {
             // pid of previous run exists, command still running
-        guard !FileManager.default.fileExists(atPath: pidFileURL.path) else { return false }
+        guard !FileManager.default.fileExists(atPath: pidFileURL.path) else { return .success(false) }
 
             // no output, run command for first time
-        guard FileManager.default.fileExists(atPath: cacheFileURL.path) else { return true }
+        guard FileManager.default.fileExists(atPath: cacheFileURL.path) else { return .success(true) }
 
-        let fileAttributes = try FileManager.default.attributesOfItem(atPath: cacheFileURL.path)
-        guard let modificationDate = fileAttributes[FileAttributeKey.modificationDate] as? Date else { return false }
+        do {
 
-        // last modification date more than cacheTimeInSeconds old?
-        return Date().timeIntervalSince(modificationDate) > TimeInterval(cacheTimeInSeconds)
+            let fileAttributes = try FileManager.default.attributesOfItem(atPath: cacheFileURL.path)
+            guard let modificationDate = fileAttributes[FileAttributeKey.modificationDate] as? Date else { return .success(true) }
+
+            // last modification date more than cacheTimeInSeconds old?
+            return .success(
+                Date().timeIntervalSince(modificationDate) > TimeInterval(cacheTimeInSeconds)
+            )
+
+        } catch {
+            return .failure(.systemError(error))
+        }
     }
 
     /// check for the existence of the run folder for the command. this is where we keep the cached command data and
@@ -135,13 +158,19 @@ final class CacheExecutor {
     private static func sha256Hash(for string: String) throws -> String {
         guard let stringData = string.data(using: .utf8) else { throw CacheExecutorError.hashFailure(string) }
         let hash = SHA256.hash(data: stringData)
-        let repr = hash.makeIterator().map { value -> String in
+        let hashString = hash.makeIterator().map { value -> String in
             String(format: "%02x", value)
         }
-        return repr.joined()
+        return hashString.joined()
     }
 
-    private static func findCommandURL(command: String, in pathDirs: [String]) -> URL? {
+    private static func findCommand(command: String) -> URL? {
+
+        // command contains a separator, assume it's a full path
+        guard !command.contains("/") else { return URL(fileURLWithPath: command) }
+
+        let pathDirs = ProcessInfo.processInfo.environment["PATH"]?.components(separatedBy: ":") ?? []
+
         return pathDirs.map { path -> String in
             return (path.components(separatedBy: "/") + [command]).joined(separator: "/")
         }.compactMap { path -> URL? in
