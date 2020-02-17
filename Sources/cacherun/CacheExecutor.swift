@@ -16,6 +16,9 @@ public enum CacheExecutorError: Error {
 }
 
 final class CacheExecutor {
+
+    enum Utility {}
+
     private let cacheTimeInSeconds: Int
     private let command: String
     private let commandArgs: [String]
@@ -38,7 +41,7 @@ final class CacheExecutor {
         let rundir = checkRunDirAndCreate()
         do {
 
-            let commandHash = try CacheExecutor.sha256Hash(for: ([command] + commandArgs).joined(separator: " "))
+            let commandHash = try Utility.sha256Hash(for: ([command] + commandArgs).joined(separator: " "))
             let pidFile = rundir.appending(component: "\(commandHash).pid")
             let cacheFile = rundir.appending(component: "\(commandHash).data")
 
@@ -52,7 +55,8 @@ final class CacheExecutor {
                 return .failure(error)
             }
 
-            guard let commandURL = CacheExecutor.findCommand(command: command) else {
+            let pathEnv = ProcessInfo.processInfo.environment["PATH"]
+            guard let commandURL = Utility.findCommand(command: command, pathEnvironmentValue: pathEnv) else {
                 return .failure(.badCommand(reason: "\(command) is not a valid path or command name"))
             }
 
@@ -133,7 +137,7 @@ final class CacheExecutor {
         guard localFileSystem.isFile(cacheFile) else { return .success(true) }
 
         return .success(
-            CacheExecutor.isStaleFile(at: cacheFile, maxAgeInSeconds: TimeInterval(cacheTimeInSeconds))
+            Utility.isStaleFile(at: cacheFile, maxAgeInSeconds: TimeInterval(cacheTimeInSeconds))
         )
     }
 
@@ -154,39 +158,5 @@ final class CacheExecutor {
         }
         return runDir
     }
-
-    // MARK: static methods
-
-    private static func isStaleFile(at path: AbsolutePath, maxAgeInSeconds maxAge: TimeInterval) -> Bool {
-        guard let fileAttributes = try? localFileSystem.getFileInfo(path) else { return true }
-        return Date().timeIntervalSince1970 - TimeInterval(fileAttributes.modTime.seconds) > maxAge
-    }
-
-    private static func sha256Hash(for string: String) throws -> String {
-        guard let stringData = string.data(using: .utf8) else { throw CacheExecutorError.hashFailure(string) }
-        let hash = SHA256.hash(data: stringData)
-        let hashString = hash.makeIterator().map { value -> String in
-            String(format: "%02x", value)
-        }
-        return hashString.joined()
-    }
-
-    private static func findCommand(command: String) -> AbsolutePath? {
-
-        // command contains a separator, assume it's a full path
-        if let commandIsPath = try? AbsolutePath(validating: command) {
-            return commandIsPath
-        }
-
-        let pathDirs = ProcessInfo.processInfo.environment["PATH"]?.components(separatedBy: ":") ?? []
-
-        return pathDirs.compactMap { path -> AbsolutePath? in
-            guard let pathAbs = try? AbsolutePath(validating: path) else { return nil }
-            return AbsolutePath(pathAbs, command)
-        }.filter { candidatePath -> Bool in
-            localFileSystem.isExecutableFile(candidatePath)
-        }.first
-    }
-
 
 }
