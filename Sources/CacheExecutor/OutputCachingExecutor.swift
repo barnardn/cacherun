@@ -23,10 +23,15 @@ public final class OutputCachingExecutor {
     private let command: String
     private let commandArgs: [String]
 
-    public init(cacheTime: Int, userCommand: [String]) {
+    private let outputStream: OutputByteStream
+    private let errorStream: OutputByteStream
+
+    public init(cacheTime: Int, userCommand: [String], outputStream: OutputByteStream = stdoutStream, errorStream: OutputByteStream = stderrStream) {
         self.cacheTimeInSeconds = cacheTime
         self.command = userCommand[0]
         commandArgs = userCommand.count > 1 ? Array(userCommand[1...]) : []
+        self.outputStream = outputStream
+        self.errorStream = errorStream
     }
 
     /// run the command or return the cached results if the cached output from the last run isn't stale.
@@ -48,7 +53,7 @@ public final class OutputCachingExecutor {
             switch shouldUpdateCache(pidFile: pidFile, cacheFile: cacheFile) {
             case .success(let shouldRun):
                 if !shouldRun {
-                    showCommandOutput(try? Data(contentsOf: cacheFile.asURL))
+                    showCommandOutput(try? Data(contentsOf: cacheFile.asURL), on: outputStream)
                     return .success(true)
                 }
             case .failure(let error):
@@ -79,7 +84,7 @@ public final class OutputCachingExecutor {
         task.arguments = commandArgs
 
         setupOutputNotification(on: task, cacheFile: cacheFile)
-        setupErrorOutputNotification(on: task, errorTextStream: stderrStream)
+        setupErrorOutputNotification(on: task, errorStream: errorStream)
         try task.run()
         try "\(task.processIdentifier)".write(to: pidFile.asURL, atomically: true, encoding: .utf8)
         task.waitUntilExit()
@@ -96,19 +101,21 @@ public final class OutputCachingExecutor {
         let outputPipe = Pipe()
         task.standardOutput = outputPipe
         NotificationCenter.default.addObserver(forName: Notification.Name.NSFileHandleDataAvailable, object: outputPipe.fileHandleForReading, queue: nil) { [weak self] notification in
+            guard let self = self else { return }
             // copy the data from the pipe, since we need it in two places.
             let commandData = Data(referencing: outputPipe.fileHandleForReading.availableData as NSData)
-            self?.showCommandOutput(commandData)
+            self.showCommandOutput(commandData, on: self.outputStream)
             try? commandData.write(to: cacheFile.asURL)
         }
         outputPipe.fileHandleForReading.waitForDataInBackgroundAndNotify()
     }
 
-    private func setupErrorOutputNotification(on task: Foundation.Process, errorTextStream: TextOutputStream) {
+    private func setupErrorOutputNotification(on task: Foundation.Process, errorStream: OutputByteStream) {
         let errorPipe = Pipe()
         task.standardError = errorPipe
         NotificationCenter.default.addObserver(forName: Notification.Name.NSFileHandleDataAvailable, object: errorPipe.fileHandleForReading, queue: nil) { [weak self] notification in
-            self?.showCommandOutput(errorPipe.fileHandleForReading.availableData, on: stderrStream)
+            guard let self = self else { return }
+            self.showCommandOutput(errorPipe.fileHandleForReading.availableData, on: errorStream)
         }
         errorPipe.fileHandleForReading.waitForDataInBackgroundAndNotify()
     }
@@ -116,7 +123,7 @@ public final class OutputCachingExecutor {
     /// converts the output of the command to a string and write it to stdout
     /// - Parameter output: command output
     ///
-    private func showCommandOutput(_ output: Data?, on stream: OutputByteStream = stdoutStream) {
+    private func showCommandOutput(_ output: Data?, on stream: OutputByteStream) {
         guard let output = output else { return }
         if let textData = String(data: output, encoding: .utf8), textData.count > 0 {
             textData.write(to: stream)
