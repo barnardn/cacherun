@@ -152,13 +152,7 @@ public final class OutputCachingExecutor {
     /// any lock files. if we can't create a folder in the caches directory, we'll just use /tmp
     /// - Returns: the url to the run dir location
     private func checkRunDirAndCreate() -> AbsolutePath {
-        guard
-            let appSupportURL = try? FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-        else {
-            return AbsolutePath("/tmp")
-        }
-        let appSupportPath = AbsolutePath(appSupportURL.path)
-        let runDir = appSupportPath.appending(component: "cacherun")
+        let runDir = Utility.locateRunDirectory()
         if !localFileSystem.isDirectory(runDir) {
             do { try localFileSystem.createDirectory(runDir) }
             catch { return AbsolutePath("/tmp") }

@@ -42,6 +42,16 @@ extension OutputCachingExecutor.Utility {
         return Date().timeIntervalSince1970 - TimeInterval(fileAttributes.modTime.seconds) > maxAge
     }
 
+    static func locateRunDirectory() -> AbsolutePath {
+        guard
+            let appSupportURL = try? FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        else {
+            return AbsolutePath("/tmp")
+        }
+        let appSupportPath = AbsolutePath(appSupportURL.path)
+        return appSupportPath.appending(components: "cacherun")
+    }
+
 }
 
 extension CryptoKit.SHA256.Digest {
