@@ -38,11 +38,11 @@ do {
     let parsedArgs = try argParser.parse(argv)
     guard let cacheTime = parsedArgs.get(cacheTimeArg) else {
         print("Supply a cache time in seconds.")
-        exit(1)
+        exit(EXIT_FAILURE)
     }
     guard let userCommand = parsedArgs.get(userCommandArgs) else {
         print("Supply a command to run.")
-        exit(1)
+        exit(EXIT_FAILURE)
     }
 
     let executor = OutputCachingExecutor(cacheTime: cacheTime, userCommand: userCommand)
@@ -56,11 +56,11 @@ do {
         case .systemError(let error):
             error.localizedDescription.write(to: Basic.stderrStream)
         }
-        exit(1)
+        exit(EXIT_FAILURE)
     }
 
 } catch {
     print(error.localizedDescription)
     argParser.printUsage(on: Basic.stderrStream)
-    exit(1)
+    exit(EXIT_FAILURE)
 }
