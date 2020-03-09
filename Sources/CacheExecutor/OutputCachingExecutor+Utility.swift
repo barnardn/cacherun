@@ -52,6 +52,13 @@ extension OutputCachingExecutor.Utility {
         return appSupportPath.appending(components: "cacherun")
     }
 
+    static func findProcess(withPid pid: Int, commandHash: String) throws -> Bool {
+        let ps = try Basic.Process.popen(arguments: ["/bin/ps", "-o command=", "-p \(pid)"])
+        let matchingCommand = try ps.utf8Output()
+        let matchingCommandHash = try sha256Hash(for: matchingCommand)
+        return matchingCommandHash == commandHash
+    }
+
 }
 
 extension CryptoKit.SHA256.Digest {

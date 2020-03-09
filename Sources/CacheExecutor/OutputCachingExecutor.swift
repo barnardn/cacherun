@@ -15,6 +15,12 @@ public enum CacheExecutorError: Error {
     case systemError(Error)
 }
 
+private enum CacheFileStatus {
+    case stale
+    case fresh
+    case awaitingFirstResult
+}
+
 public final class OutputCachingExecutor {
 
     enum Utility {}
@@ -50,14 +56,14 @@ public final class OutputCachingExecutor {
             let pidFile = rundir.appending(component: "\(commandHash).pid")
             let cacheFile = rundir.appending(component: "\(commandHash).data")
 
-            switch shouldUpdateCache(pidFile: pidFile, cacheFile: cacheFile) {
-            case .success(let shouldRun):
-                if !shouldRun {
-                    showCommandOutput(try? Data(contentsOf: cacheFile.asURL), on: outputStream)
-                    return .success(true)
-                }
-            case .failure(let error):
-                return .failure(error)
+            switch shouldUpdateCache(pidFile: pidFile, cacheFile: cacheFile, commandHash: commandHash) {
+            case .awaitingFirstResult:
+                return .success(false)
+            case .fresh:
+                showCommandOutput(try? Data(contentsOf: cacheFile.asURL), on: outputStream)
+                return .success(true)
+            case .stale:
+                break;
             }
 
             let pathEnv = ProcessInfo.processInfo.environment["PATH"]
@@ -136,16 +142,35 @@ public final class OutputCachingExecutor {
     /// - Parameter cacheFile: url to the previous run's output
     /// - Returns: true of time expired or cacheFile doesn't exist
     ///
-    private func shouldUpdateCache(pidFile: AbsolutePath, cacheFile: AbsolutePath) -> Result<Bool, CacheExecutorError> {
-            // pid of previous run exists, command still running
-        guard !localFileSystem.isFile(pidFile) else { return .success(false) }
+    private func shouldUpdateCache(pidFile: AbsolutePath, cacheFile: AbsolutePath, commandHash: String) -> CacheFileStatus {
 
-            // no output, run command for first time
-        guard localFileSystem.isFile(cacheFile) else { return .success(true) }
+        let commandStillRunning: Bool
+        if localFileSystem.isFile(pidFile) {
+            commandStillRunning = { () -> Bool in
+                guard
+                    let lastProcessIdentifer = try? String(contentsOf: pidFile.asURL, encoding: .utf8),
+                    let pid = Int(lastProcessIdentifer)
+                else  { return false }
+                return (try? Utility.findProcess(withPid: pid, commandHash: commandHash)) ?? false
+            }()
+            // we have pid file, but can't find the command that made it, kill the pid file
+            if !commandStillRunning {
+                try? localFileSystem.removeFileTree(pidFile)
+            }
+        } else {
+            commandStillRunning = false
+        }
 
-        return .success(
-            Utility.isStaleFile(at: cacheFile, maxAgeInSeconds: TimeInterval(cacheTimeInSeconds))
-        )
+        if commandStillRunning && !localFileSystem.isFile(cacheFile) {
+            return .awaitingFirstResult
+        }
+
+        defer {
+            if commandStillRunning {
+                try? localFileSystem.removeFileTree(pidFile)
+            }
+        }
+        return Utility.isStaleFile(at: cacheFile, maxAgeInSeconds: TimeInterval(cacheTimeInSeconds)) ? .stale : .fresh
     }
 
     /// check for the existence of the run folder for the command. this is where we keep the cached command data and
