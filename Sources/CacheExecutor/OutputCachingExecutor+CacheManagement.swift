@@ -122,8 +122,7 @@ public extension OutputCachingExecutor.CacheManagement {
 
 extension FileInfo {
     var lastModDateInLocalTime: Date {
-        let tzOffset = TimeZone.current.secondsFromGMT()
-        return Date(timeIntervalSince1970: TimeInterval(Int(modTime.seconds) + tzOffset))
+        return Date(timeIntervalSince1970: TimeInterval(Int(modTime.seconds)))
     }
 
 }
