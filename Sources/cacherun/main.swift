@@ -32,11 +32,27 @@ let userCommandArgs = argParser.add(
     completion: ShellCompletion.none
 )
 
-let listCommandsOptions = argParser.add(
-    option: "--list-commands",
+let listCachesOption = argParser.add(
+    option: "--list-caches",
     shortName: "-l",
     kind: Bool.self,
-    usage: "list out the commands currently cached",
+    usage: "display information about the command currently cached",
+    completion: ShellCompletion.none
+)
+
+let resetCacheOption = argParser.add(
+    option: "--reset-cache",
+    shortName: "-r",
+    kind: String.self,
+    usage: "resets the cache files for the command identified by <cacheid>, forcing the command to be executed the next time it's run",
+    completion: ShellCompletion.none
+)
+
+let deleteCacheOption = argParser.add(
+    option: "--delete-cache",
+    shortName: "-d",
+    kind: String.self,
+    usage: "deletes all the files assocated to the command identified by <cacheid>",
     completion: ShellCompletion.none
 )
 
@@ -45,12 +61,32 @@ let argv = Array(CommandLine.arguments.dropFirst())
 do {
     let parsedArgs = try argParser.parse(argv)
 
-    if let listCommands = parsedArgs.get(listCommandsOptions), listCommands == true {
+    if let listCommand = parsedArgs.get(listCachesOption), listCommand == true {
         guard argv.count == 1 else {
             argParser.printUsage(on: Basic.stderrStream)
             exit(EXIT_FAILURE)
         }
         OutputCachingExecutor.CacheManagement.showCachedCommands()
+        exit(EXIT_SUCCESS)
+    } else if let commandHash = parsedArgs.get(resetCacheOption) {
+        guard argv.count == 2 else {
+            argParser.printUsage(on: Basic.stderrStream)
+            exit(EXIT_FAILURE)
+        }
+        if case .failure(let error) = OutputCachingExecutor.CacheManagement.resetCache(havingIdentifier: commandHash) {
+            error.localizedDescription.write(to: Basic.stderrStream)
+            exit(EXIT_FAILURE)
+        }
+        exit(EXIT_SUCCESS)
+    } else if let commandHash = parsedArgs.get(deleteCacheOption) {
+        guard argv.count == 2 else {
+            argParser.printUsage(on: Basic.stderrStream)
+            exit(EXIT_FAILURE)
+        }
+        if case .failure(let error) = OutputCachingExecutor.CacheManagement.deleteCacheFiles(havingIdentifier: commandHash) {
+            error.localizedDescription.write(to: Basic.stderrStream)
+            exit(EXIT_FAILURE)
+        }
         exit(EXIT_SUCCESS)
     }
 
