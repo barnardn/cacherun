@@ -8,12 +8,21 @@ This swift implementation was inspired by [runcached](https://github.com/jazzl0v
 
 ## Synopsis
 
-`cacherun --cache-time N command arg0 arg1 ... argN`
+```
+OVERVIEW: Returns the cached output of "commmand" when executed within "--cache-time" seconds
 
-Where:
-- `N` is the cache expiration time in seconds
-- `command` is the command (or full path to an executable) to run
-- `arg0 arg1 ... argN` are the arguments to `command`
+USAGE: cacherun --cache-time 60 command <flags> <args>
+
+OPTIONS:
+  --cache-time, -c     cached output expiration time in seconds
+  --delete-cache, -d   deletes all the files assocated to the command identified by <cacheid>
+  --list-caches, -l    display information about the commands currently cached
+  --reset-cache, -r    resets the cache files for the command identified by <cacheid>, forcing the command to be executed the next time it's run
+  --help               Display available options
+
+POSITIONAL ARGUMENTS:
+  command              command arg0 arg1 ... argn
+```
 
 ## Description
 
