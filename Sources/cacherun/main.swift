@@ -26,9 +26,17 @@ let cacheTimeArg = argParser.add(
 let userCommandArgs = argParser.add(
     positional: "command",
     kind: [String].self,
-    optional: false,
+    optional: true,
     strategy: .remaining,
     usage: "command arg0 arg1 ... argn",
+    completion: ShellCompletion.none
+)
+
+let listCommandsOptions = argParser.add(
+    option: "--list-commands",
+    shortName: "-l",
+    kind: Bool.self,
+    usage: "list out the commands currently cached",
     completion: ShellCompletion.none
 )
 
@@ -36,6 +44,16 @@ let argv = Array(CommandLine.arguments.dropFirst())
 
 do {
     let parsedArgs = try argParser.parse(argv)
+
+    if let listCommands = parsedArgs.get(listCommandsOptions), listCommands == true {
+        guard argv.count == 1 else {
+            argParser.printUsage(on: Basic.stderrStream)
+            exit(EXIT_FAILURE)
+        }
+        OutputCachingExecutor.CacheManagement.showCachedCommands()
+        exit(EXIT_SUCCESS)
+    }
+
     guard let cacheTime = parsedArgs.get(cacheTimeArg) else {
         print("Supply a cache time in seconds.")
         exit(EXIT_FAILURE)

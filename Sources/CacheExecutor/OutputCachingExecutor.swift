@@ -24,6 +24,7 @@ private enum CacheFileStatus {
 public final class OutputCachingExecutor {
 
     enum Utility {}
+    public enum CacheManagement {}
 
     private let cacheTimeInSeconds: Int
     private let command: String
@@ -72,6 +73,11 @@ public final class OutputCachingExecutor {
             }
 
             try execute(commandPath: commandURL, pidFile: pidFile, cacheFile: cacheFile)
+
+            // write out the commmand as executed for reporting
+            let commandFile = rundir.appending(component: "\(commandHash).cmd")
+            try "\(command) \(commandArgs.joined(separator: " "))".write(to: commandFile.asURL, atomically: true, encoding: .utf8)
+
             return .success(true)
 
         } catch CacheExecutorError.hashFailure(let message) {

@@ -69,3 +69,78 @@ extension CryptoKit.SHA256.Digest {
         return hashString.joined()
     }
 }
+
+public extension OutputCachingExecutor.CacheManagement {
+
+    struct CommandInfo: CustomStringConvertible {
+        let commandLine: String
+        let hash: String
+        let lastUpdateDate: Date
+
+        public var description: String {
+            "\(hash)\t\(commandLine)\t\(lastUpdateDate)"
+        }
+    }
+
+    static func showCachedCommands() {
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "MM-dd' at 'HH:mm:ss"
+
+        switch listCachedCommands() {
+        case .success(let commandInfo):
+            print (
+                [
+                "Hash".padding(toLength: 10, withPad: " ", startingAt: 0),
+                "Last Run Date".padding(toLength: 20, withPad: " ", startingAt: 0),
+                "Command"
+                ].joined()
+            )
+            commandInfo.forEach { cmd in
+                let formattedDate = dateFormatter.string(from: cmd.lastUpdateDate)
+                print(
+                    [
+                        cmd.hash.padding(toLength: 10, withPad: " ", startingAt: 0),
+                        formattedDate.padding(toLength: 20, withPad: " ", startingAt: 0),
+                        cmd.commandLine,
+                        "\n"
+                    ].joined()
+                )
+            }
+        case .failure(let error):
+            error.localizedDescription.write(to: Basic.stderrStream)
+        }
+    }
+
+    private static func listCachedCommands() -> Result<[CommandInfo], NSError> {
+        let runDir = OutputCachingExecutor.Utility.locateRunDirectory()
+        do {
+            let allFiles = try localFileSystem.getDirectoryContents(runDir)
+            let commandPaths = allFiles.filter { $0.hasSuffix(".cmd") }.map { AbsolutePath($0, relativeTo: runDir) }
+            guard commandPaths.count > 0 else { return .success([]) }
+            let commandLines = commandPaths.compactMap { path -> CommandInfo? in
+                guard
+                    let commandLine = try? localFileSystem.readFileContents(path).cString,
+                    let fileInfo = try? localFileSystem.getFileInfo(path)
+                else {
+                    return nil
+                }
+                return CommandInfo(
+                    commandLine: commandLine,
+                    hash: String(path.basenameWithoutExt.prefix(7)),
+                    lastUpdateDate: fileInfo.lastModDateInLocalTime)
+            }
+            return .success(commandLines)
+        } catch let error as NSError {
+            return .failure(error)
+        }
+    }
+}
+
+extension FileInfo {
+    var lastModDateInLocalTime: Date {
+        let tzOffset = TimeZone.current.secondsFromGMT()
+        return Date(timeIntervalSince1970: TimeInterval(Int(modTime.seconds) + tzOffset))
+    }
+
+}
