@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import Basic
+import TSCBasic
 import CryptoKit
 
 extension OutputCachingExecutor.Utility {
@@ -39,7 +39,8 @@ extension OutputCachingExecutor.Utility {
 
     static func isStaleFile(at path: AbsolutePath, maxAgeInSeconds maxAge: TimeInterval) -> Bool {
         guard let fileAttributes = try? localFileSystem.getFileInfo(path) else { return true }
-        return Date().timeIntervalSince1970 - TimeInterval(fileAttributes.modTime.seconds) > maxAge
+        
+        return Date().timeIntervalSince1970 - fileAttributes.modTime.timeIntervalSince1970 > maxAge
     }
 
     static func locateRunDirectory() -> AbsolutePath {
@@ -53,7 +54,7 @@ extension OutputCachingExecutor.Utility {
     }
 
     static func findProcess(withPid pid: Int, commandHash: String) throws -> Bool {
-        let ps = try Basic.Process.popen(arguments: ["/bin/ps", "-o command=", "-p \(pid)"])
+        let ps = try Process.popen(arguments: ["/bin/ps", "-o command=", "-p \(pid)"])
         let matchingCommand = try ps.utf8Output()
         let matchingCommandHash = try sha256Hash(for: matchingCommand)
         return matchingCommandHash == commandHash

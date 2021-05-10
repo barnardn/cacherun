@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import Basic
+import TSCBasic
 
 public extension OutputCachingExecutor.CacheManagement {
 
@@ -20,28 +20,26 @@ public extension OutputCachingExecutor.CacheManagement {
         }
     }
 
-    static func resetCache(havingIdentifier identifier: String) -> Result<Bool, NSError> {
+    static func resetCache(havingIdentifier identifier: String) throws {
         do {
             guard let cacheFile = findCacheFiles(prefix: identifier, fileExtension: "data").first else {
-                return .failure(NSError(domain: "cacherun", code: 1, userInfo: [NSLocalizedDescriptionKey: "no cache file found with identifier: \(identifier)"]))
+                throw CacheExecutorError.fileError(message: "no cache file found with identifier: \(identifier)")
             }
             try localFileSystem.removeFileTree(cacheFile)
-            return .success(true)
         } catch let error as NSError {
-            return .failure(error)
+            throw error
         }
     }
 
-    static func deleteCacheFiles(havingIdentifier identifier: String) -> Result<Bool, NSError> {
+    static func deleteCacheFiles(havingIdentifier identifier: String) throws {
         do {
             let cacheFiles = findCacheFiles(prefix: identifier)
             guard cacheFiles.count > 0 else {
-                return .failure(NSError(domain: "cacherun", code: 1, userInfo: [NSLocalizedDescriptionKey: "no cache file found with identifier: \(identifier)"]))
+                throw CacheExecutorError.fileError(message: "no cache file found with identifier: \(identifier)")
             }
             try cacheFiles.forEach { try localFileSystem.removeFileTree($0) }
-            return .success(true)
         } catch let error as NSError {
-            return .failure(error)
+            throw error
         }
     }
 
@@ -51,7 +49,10 @@ public extension OutputCachingExecutor.CacheManagement {
         dateFormatter.dateFormat = "MM-dd' at 'HH:mm:ss"
 
         let commandInfo = listCachedCommands()
-        guard commandInfo.count > 0 else { return }
+        guard commandInfo.count > 0 else {
+            print ("No cached commands.")
+            return
+        }
         print (
             [
             "Hash".padding(toLength: 10, withPad: " ", startingAt: 0),
@@ -114,15 +115,8 @@ public extension OutputCachingExecutor.CacheManagement {
             return CommandInfo(
                 commandLine: commandLine,
                 hash: String(path.basenameWithoutExt.prefix(7)),
-                lastUpdateDate: fileInfo.lastModDateInLocalTime)
+                lastUpdateDate: fileInfo.modTime)
         }
         return commandLines
     }
-}
-
-extension FileInfo {
-    var lastModDateInLocalTime: Date {
-        return Date(timeIntervalSince1970: TimeInterval(Int(modTime.seconds)))
-    }
-
 }

@@ -7,114 +7,67 @@
 //
 
 import Foundation
-import SPMUtility
-import Basic
+import TSCBasic
+import ArgumentParser
 import CacheExecutor
 
-let argParser = ArgumentParser(
-    commandName: "cacherun",
-    usage: "--cache-time 60 command <flags> <args>",
-    overview: "Returns the cached output of \"commmand\" when executed within \"--cache-time\" seconds"
-)
-let cacheTimeArg = argParser.add(
-    option: "--cache-time",
-    shortName: "-c",
-    kind: Int.self,
-    usage: "cached output expiration time in seconds",
-    completion: ShellCompletion.none
-)
-let userCommandArgs = argParser.add(
-    positional: "command",
-    kind: [String].self,
-    optional: true,
-    strategy: .remaining,
-    usage: "command arg0 arg1 ... argn",
-    completion: ShellCompletion.none
-)
+struct CacheRun: ParsableCommand {
+    
+    @Option(name: .shortAndLong, help: "cached output expiration time in seconds")
+    var cacheTime: Int = 60
+    
+    @Flag(name: .shortAndLong, help: "display information about the commands currently cached")
+    var listCaches = false
 
-let listCachesOption = argParser.add(
-    option: "--list-caches",
-    shortName: "-l",
-    kind: Bool.self,
-    usage: "display information about the command currently cached",
-    completion: ShellCompletion.none
-)
-
-let resetCacheOption = argParser.add(
-    option: "--reset-cache",
-    shortName: "-r",
-    kind: String.self,
-    usage: "resets the cache files for the command identified by <cacheid>, forcing the command to be executed the next time it's run",
-    completion: ShellCompletion.none
-)
-
-let deleteCacheOption = argParser.add(
-    option: "--delete-cache",
-    shortName: "-d",
-    kind: String.self,
-    usage: "deletes all the files assocated to the command identified by <cacheid>",
-    completion: ShellCompletion.none
-)
-
-let argv = Array(CommandLine.arguments.dropFirst())
-
-do {
-    let parsedArgs = try argParser.parse(argv)
-
-    if let listCommand = parsedArgs.get(listCachesOption), listCommand == true {
-        guard argv.count == 1 else {
-            argParser.printUsage(on: Basic.stderrStream)
-            exit(EXIT_FAILURE)
+    @Flag(name: .shortAndLong)
+    var help: Bool = false
+    
+    @Option(name: .shortAndLong, help: "deletes all the files assocated to the command identified by <cacheid>")
+    var deleteCache: String?
+    
+    @Option(name: .shortAndLong, help: "resets the cache files for the command identified by <cacheid>, forcing the command to be executed the next time it's run")
+    var resetCache: String?
+    
+    @Argument(parsing: .unconditionalRemaining, help: "command <flags> <args>")
+    var userCommand: [String] = []
+    
+    mutating func run() throws {
+            
+        guard !help else { throw CleanExit.helpRequest(self) }
+        
+        if listCaches {
+            OutputCachingExecutor.CacheManagement.showCachedCommands()
+        } else if let deleteCache = deleteCache {
+            try OutputCachingExecutor.CacheManagement.deleteCacheFiles(havingIdentifier: deleteCache)
+        } else if let resetCache = resetCache {
+            try OutputCachingExecutor.CacheManagement.resetCache(havingIdentifier: resetCache)
+        } else {
+            guard !userCommand.isEmpty else {
+                throw CleanExit.helpRequest(self)
+            }
+            
+            let executor = OutputCachingExecutor(cacheTime: cacheTime, userCommand: userCommand)
+            if case let .failure(executorError) = executor.runCachedCommand() {
+                
+                defer { CacheRun.exit(withError: executorError) }
+                
+                switch executorError {
+                case .badCommand(let reason),
+                     .fileError(let reason),
+                     .hashFailure(let reason):
+                    reason.write(to: TSCBasic.stderrStream)
+                case .systemError(let error):
+                    error.localizedDescription.write(to: TSCBasic.stderrStream)
+                }
+                
+            }
         }
-        OutputCachingExecutor.CacheManagement.showCachedCommands()
-        exit(EXIT_SUCCESS)
-    } else if let commandHash = parsedArgs.get(resetCacheOption) {
-        guard argv.count == 2 else {
-            argParser.printUsage(on: Basic.stderrStream)
-            exit(EXIT_FAILURE)
-        }
-        if case .failure(let error) = OutputCachingExecutor.CacheManagement.resetCache(havingIdentifier: commandHash) {
-            error.localizedDescription.write(to: Basic.stderrStream)
-            exit(EXIT_FAILURE)
-        }
-        exit(EXIT_SUCCESS)
-    } else if let commandHash = parsedArgs.get(deleteCacheOption) {
-        guard argv.count == 2 else {
-            argParser.printUsage(on: Basic.stderrStream)
-            exit(EXIT_FAILURE)
-        }
-        if case .failure(let error) = OutputCachingExecutor.CacheManagement.deleteCacheFiles(havingIdentifier: commandHash) {
-            error.localizedDescription.write(to: Basic.stderrStream)
-            exit(EXIT_FAILURE)
-        }
-        exit(EXIT_SUCCESS)
     }
+}
 
-    guard let cacheTime = parsedArgs.get(cacheTimeArg) else {
-        print("Supply a cache time in seconds.")
-        exit(EXIT_FAILURE)
-    }
-    guard let userCommand = parsedArgs.get(userCommandArgs) else {
-        print("Supply a command to run.")
-        exit(EXIT_FAILURE)
-    }
-
-    let executor = OutputCachingExecutor(cacheTime: cacheTime, userCommand: userCommand)
-
-    if case let .failure(executorError) = executor.runCachedCommand() {
-        switch executorError {
-        case .badCommand(let reason):
-            reason.write(to: Basic.stderrStream)
-        case .hashFailure(let message):
-            message.write(to: Basic.stderrStream)
-        case .systemError(let error):
-            error.localizedDescription.write(to: Basic.stderrStream)
-        }
-        exit(EXIT_FAILURE)
-    }
-
-} catch {
-    print(error.localizedDescription)
-    argParser.printUsage(on: Basic.stderrStream)
-    exit(EXIT_FAILURE)
+if #available(OSX 10.15, *) {
+    CacheRun.main()
+} else {
+    print("Update to a macos 10.15 or better")
+    exit(1)
 }
