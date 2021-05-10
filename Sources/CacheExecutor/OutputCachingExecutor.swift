@@ -6,14 +6,8 @@
 //
 
 import Foundation
-import Basic
+import TSCBasic
 import CryptoKit
-
-public enum CacheExecutorError: Error {
-    case hashFailure(String)
-    case badCommand(reason: String)
-    case systemError(Error)
-}
 
 private enum CacheFileStatus {
     case stale

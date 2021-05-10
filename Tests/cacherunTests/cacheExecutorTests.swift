@@ -7,7 +7,7 @@
 
 import Foundation
 import XCTest
-import Basic
+import TSCBasic
 @testable import CacheExecutor
 
 final class cachExecutorTests: XCTestCase {
