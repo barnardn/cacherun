@@ -46,7 +46,6 @@ public final class OutputCachingExecutor {
 
         let rundir = checkRunDirAndCreate()
         do {
-
             let commandHash = try Utility.sha256Hash(for: ([command] + commandArgs).joined(separator: " "))
             let pidFile = rundir.appending(component: "\(commandHash).pid")
             let cacheFile = rundir.appending(component: "\(commandHash).data")
