@@ -12,7 +12,7 @@ import CacheExecutor
 
 @main
 struct CacheRun: ParsableCommand {
-    static let toolVersion = "2.1.0"
+    static let toolVersion = "2.1.1"
 
     @Option(name: .shortAndLong, help: "cached output expiration time in seconds")
     var cacheTime: Int = 60
