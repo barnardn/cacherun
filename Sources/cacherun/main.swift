@@ -11,7 +11,6 @@ import ArgumentParser
 import CacheExecutor
 
 struct CacheRun: ParsableCommand {
-    
     @Option(name: .shortAndLong, help: "cached output expiration time in seconds")
     var cacheTime: Int = 60
     
@@ -64,9 +63,9 @@ struct CacheRun: ParsableCommand {
     }
 }
 
-if #available(OSX 10.15, *) {
+if #available(macOS 26, *) {
     CacheRun.main()
 } else {
-    print("Update to a macos 10.15 or better")
+    print("Update to a macos 26 or better")
     exit(1)
 }
