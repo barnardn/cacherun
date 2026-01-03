@@ -12,7 +12,7 @@ import CacheExecutor
 
 @main
 struct CacheRun: ParsableCommand {
-    static let toolVersion = "2.0.0"
+    static let toolVersion = "2.1.0"
 
     @Option(name: .shortAndLong, help: "cached output expiration time in seconds")
     var cacheTime: Int = 60
@@ -22,9 +22,15 @@ struct CacheRun: ParsableCommand {
 
     @Option(name: .shortAndLong, help: "deletes all the files assocated to the command identified by <cacheid>")
     var deleteCache: String?
-    
+
+    @Flag(name: .long, help: "delete all files for all cached commands")
+    var deleteAll = false
+
     @Option(name: .shortAndLong, help: "resets the cache files for the command identified by <cacheid>, forcing the command to be executed the next time it's run")
     var resetCache: String?
+
+    @Flag(name: .long, help: "reset all the output for all cached commands.")
+    var resetAll = false
 
     // implement our own version and help due to `userCommand` argument
     @Flag(name: .long, help: "Show version and exit")
@@ -48,10 +54,14 @@ struct CacheRun: ParsableCommand {
 
         if listCaches {
             OutputCachingExecutor.CacheManagement.showCachedCommands()
-        } else if let deleteCache = deleteCache {
+        } else if let deleteCache {
             try OutputCachingExecutor.CacheManagement.deleteCacheFiles(havingIdentifier: deleteCache)
-        } else if let resetCache = resetCache {
+        } else if deleteAll {
+            try OutputCachingExecutor.CacheManagement.deleteCacheFiles(havingIdentifier: nil)
+        } else if let resetCache {
             try OutputCachingExecutor.CacheManagement.resetCache(havingIdentifier: resetCache)
+        } else if resetAll {
+            try OutputCachingExecutor.CacheManagement.resetCache(havingIdentifier: nil)
         } else {
             guard !userCommand.isEmpty else {
                 throw CleanExit.helpRequest(self)

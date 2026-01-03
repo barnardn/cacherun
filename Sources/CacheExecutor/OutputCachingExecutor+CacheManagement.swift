@@ -20,22 +20,32 @@ public extension OutputCachingExecutor.CacheManagement {
         }
     }
 
-    static func resetCache(fileManager: FileManager = .default, havingIdentifier identifier: String) throws {
+    static func resetCache(fileManager: FileManager = .default, havingIdentifier identifier: String?) throws {
         do {
-            guard let cacheFile = findCacheFiles(prefix: identifier, fileExtension: "data").first else {
-                throw CacheExecutorError.fileError(message: "no cache file found with identifier: \(identifier)")
+            let cacheFiles = findCacheFiles(fileExtension: "data")
+            if let identifier {
+                guard let cacheFile = cacheFiles.first(where: { $0.lastComponent?.stem.hasPrefix(identifier) == true }) else {
+                    throw CacheExecutorError.fileError(message: "no cache file found with identifier: \(identifier)")
+                }
+                try cacheFile.delete(fileManager: fileManager)
+            } else {
+                cacheFiles.forEach {
+                    try? $0.delete(fileManager: fileManager)
+                }
             }
-            try fileManager.removeItem(atPath: cacheFile.string)
         } catch let error as NSError {
             throw error
         }
     }
 
-    static func deleteCacheFiles(fileManager: FileManager = .default, havingIdentifier identifier: String) throws {
+    static func deleteCacheFiles(fileManager: FileManager = .default, havingIdentifier identifier: String?) throws {
         do {
             let cacheFiles = findCacheFiles(prefix: identifier)
             guard cacheFiles.count > 0 else {
-                throw CacheExecutorError.fileError(message: "no cache file found with identifier: \(identifier)")
+                if let identifier {
+                    throw CacheExecutorError.fileError(message: "no cache file found with identifier: \(identifier)")
+                }
+                return
             }
             try cacheFiles.forEach { try fileManager.removeItem(atPath: $0.string) }
         } catch let error as NSError {
