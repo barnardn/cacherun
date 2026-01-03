@@ -15,17 +15,8 @@
         "repositoryURL": "https://github.com/apple/swift-system.git",
         "state": {
           "branch": null,
-          "revision": "025bcb1165deab2e20d4eaba79967ce73013f496",
-          "version": "1.2.1"
-        }
-      },
-      {
-        "package": "swift-tools-support-core",
-        "repositoryURL": "https://github.com/apple/swift-tools-support-core",
-        "state": {
-          "branch": null,
-          "revision": "3b13e439a341bbbfe0f710c7d1be37221745ef1a",
-          "version": "0.6.1"
+          "revision": "395a77f0aa927f0ff73941d7ac35f2b46d47c9db",
+          "version": "1.6.3"
         }
       }
     ]

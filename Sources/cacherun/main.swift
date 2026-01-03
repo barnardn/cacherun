@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import TSCBasic
 import ArgumentParser
 import CacheExecutor
 
@@ -28,7 +27,7 @@ struct CacheRun: ParsableCommand {
     @Option(name: .shortAndLong, help: "resets the cache files for the command identified by <cacheid>, forcing the command to be executed the next time it's run")
     var resetCache: String?
     
-    @Argument(parsing: .unconditionalRemaining, help: "command <flags> <args>")
+    @Argument(parsing: .captureForPassthrough, help: "command <flags> <args>")
     var userCommand: [String] = []
     
     mutating func run() throws {
@@ -55,9 +54,9 @@ struct CacheRun: ParsableCommand {
                 case .badCommand(let reason),
                      .fileError(let reason),
                      .hashFailure(let reason):
-                    reason.write(to: TSCBasic.stderrStream)
+                    try? FileHandle.standardError.write(contentsOf: Data(reason.utf8))
                 case .systemError(let error):
-                    error.localizedDescription.write(to: TSCBasic.stderrStream)
+                    try? FileHandle.standardError.write(contentsOf: Data(error.localizedDescription.utf8))
                 }
                 
             }

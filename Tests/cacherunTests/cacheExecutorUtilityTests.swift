@@ -6,8 +6,8 @@
 //
 
 import Foundation
+import SystemPackage
 import XCTest
-import TSCBasic
 @testable import CacheExecutor
 
 final class cachExecutorUtilityTests: XCTestCase {
@@ -16,7 +16,7 @@ final class cachExecutorUtilityTests: XCTestCase {
 
     func testFindCommand() {
         let lsExists = OutputCachingExecutor.Utility.findCommand(command: "ls", pathEnvironmentValue: fullPath)
-        XCTAssertEqual(lsExists?.pathString, "/bin/ls")
+        XCTAssertEqual(lsExists?.string, "/bin/ls")
 
         let lsNotExist = OutputCachingExecutor.Utility.findCommand(command: "ls", pathEnvironmentValue: "/usr/bin:/usr/local/bin:/opt/bin")
         XCTAssertNil(lsNotExist)
@@ -24,7 +24,7 @@ final class cachExecutorUtilityTests: XCTestCase {
         XCTAssertNil(OutputCachingExecutor.Utility.findCommand(command: "ls", pathEnvironmentValue: nil))
 
         let fullPathCommand = OutputCachingExecutor.Utility.findCommand(command: "/bin/ls", pathEnvironmentValue: fullPath)
-        XCTAssertEqual(fullPathCommand?.pathString, "/bin/ls")
+        XCTAssertEqual(fullPathCommand?.string, "/bin/ls")
 
         let fakeCommand = OutputCachingExecutor.Utility.findCommand(command: "not-a-real-command", pathEnvironmentValue: fullPath)
         XCTAssertNil(fakeCommand)
@@ -41,11 +41,11 @@ final class cachExecutorUtilityTests: XCTestCase {
     }
 
     func testIsStaleFile() {
-        let testFilePath = AbsolutePath("/tmp/test.txt")
+        let testFilePath = FilePath("/tmp/test.txt")
 
-        defer { try? localFileSystem.removeFileTree(testFilePath) }
+        defer { try? testFilePath.delete() }
 
-        try? "test-test-test".write(toFile: testFilePath.pathString, atomically: true, encoding: .utf8)
+        try? "test-test-test".write(toFile: testFilePath.string, atomically: true, encoding: .utf8)
         sleep(1)
         XCTAssertFalse(OutputCachingExecutor.Utility.isStaleFile(at: testFilePath, maxAgeInSeconds: 10))
         sleep(2)

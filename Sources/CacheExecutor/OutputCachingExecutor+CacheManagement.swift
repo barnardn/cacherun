@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import TSCBasic
+import SystemPackage
 
 public extension OutputCachingExecutor.CacheManagement {
 
@@ -20,24 +20,24 @@ public extension OutputCachingExecutor.CacheManagement {
         }
     }
 
-    static func resetCache(havingIdentifier identifier: String) throws {
+    static func resetCache(fileManager: FileManager = .default, havingIdentifier identifier: String) throws {
         do {
             guard let cacheFile = findCacheFiles(prefix: identifier, fileExtension: "data").first else {
                 throw CacheExecutorError.fileError(message: "no cache file found with identifier: \(identifier)")
             }
-            try localFileSystem.removeFileTree(cacheFile)
+            try fileManager.removeItem(atPath: cacheFile.string)
         } catch let error as NSError {
             throw error
         }
     }
 
-    static func deleteCacheFiles(havingIdentifier identifier: String) throws {
+    static func deleteCacheFiles(fileManager: FileManager = .default, havingIdentifier identifier: String) throws {
         do {
             let cacheFiles = findCacheFiles(prefix: identifier)
             guard cacheFiles.count > 0 else {
                 throw CacheExecutorError.fileError(message: "no cache file found with identifier: \(identifier)")
             }
-            try cacheFiles.forEach { try localFileSystem.removeFileTree($0) }
+            try cacheFiles.forEach { try fileManager.removeItem(atPath: $0.string) }
         } catch let error as NSError {
             throw error
         }
@@ -73,50 +73,58 @@ public extension OutputCachingExecutor.CacheManagement {
         }
     }
 
-    private static func findCacheFiles(prefix: String? = nil, fileExtension: String? = nil) -> [AbsolutePath] {
-
+    private static func findCacheFiles(fileManager: FileManager = .default, prefix: String? = nil, fileExtension: String? = nil) -> [FilePath] {
         let runDir = OutputCachingExecutor.Utility.locateRunDirectory()
         do {
-            let allFiles = try localFileSystem.getDirectoryContents(runDir)
-            let cacheFiles = allFiles.filter { (filename: String) in
+            let allFiles = try fileManager.contentsOfDirectory(atPath: runDir.string).map(FilePath.init(_:))
+            let cacheFiles = allFiles.filter { filename in
 
                 let passPrefixTest: Bool
                 if let prefix = prefix {
-                    passPrefixTest = filename.hasPrefix(prefix)
+                    passPrefixTest = filename.string.hasPrefix(prefix)
                 } else {
                     passPrefixTest = true
                 }
 
                 let passExtensionTest: Bool
                 if let fileExtension = fileExtension {
-                    let ext = fileExtension.hasPrefix(".") ? fileExtension : ".\(fileExtension)"
-                    passExtensionTest = filename.hasSuffix(ext)
+                    passExtensionTest = filename.extension == fileExtension
                 } else {
                     passExtensionTest = true
                 }
                 return passPrefixTest && passExtensionTest
             }
-            return cacheFiles.map { AbsolutePath($0, relativeTo: runDir) }
+            return cacheFiles.compactMap { cf in
+                cf.lastComponent.flatMap { runDir.appending($0) }
+            }
         } catch {
             return []
         }
     }
 
-    private static func listCachedCommands() -> [CommandInfo] {
-        let commandPaths = findCacheFiles(fileExtension: ".cmd")
-        guard commandPaths.count > 0 else { return [] }
+    private static func listCachedCommands(fileManager: FileManager = .default) -> [CommandInfo] {
+        let commandPaths = findCacheFiles(fileManager: fileManager, fileExtension: "cmd")
+        guard commandPaths.isNotEmpty else { return [] }
         let commandLines = commandPaths.compactMap { path -> CommandInfo? in
             guard
-                let commandLine = try? localFileSystem.readFileContents(path).cString,
-                let fileInfo = try? localFileSystem.getFileInfo(path)
+                let data = fileManager.contents(atPath: path.string),
+                let commandLine = String(data: data, encoding: .utf8),
+                let modTime = path.modificationDate(fileManager: fileManager),
+                let basename = path.lastComponent?.stem
             else {
                 return nil
             }
             return CommandInfo(
                 commandLine: commandLine,
-                hash: String(path.basenameWithoutExt.prefix(7)),
-                lastUpdateDate: fileInfo.modTime)
+                hash: String(basename.prefix(7)),
+                lastUpdateDate: modTime)
         }
         return commandLines
+    }
+}
+
+extension Collection {
+    var isNotEmpty: Bool {
+        !isEmpty
     }
 }

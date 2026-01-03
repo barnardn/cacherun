@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import TSCBasic
 import CryptoKit
+import SystemPackage
 
 extension OutputCachingExecutor.Utility {
 
@@ -15,20 +15,23 @@ extension OutputCachingExecutor.Utility {
     /// executable commands found, return the first one.
     /// - Parameter command: file name of the sought after command
     ///
-    static func findCommand(command: String, pathEnvironmentValue: String?) -> AbsolutePath? {
+    static func findCommand(command: String, pathEnvironmentValue: String?) -> FilePath? {
         guard let pathEnvironmentVar = pathEnvironmentValue else { return nil }
 
         // command contains a separator, assume it's a full path
-        if let commandIsPath = try? AbsolutePath(validating: command) {
-            return commandIsPath
+        let commandURL = URL(fileURLWithPath: command)
+        let commandPath = FilePath(commandURL.path())
+        guard !commandPath.isExecutableFile() else {
+            return commandPath
         }
+
         let pathDirs = pathEnvironmentVar.components(separatedBy: ":")
 
-        return pathDirs.compactMap { path -> AbsolutePath? in
-            guard let pathAbs = try? AbsolutePath(validating: path) else { return nil }
-            return AbsolutePath(pathAbs, command)
+        return pathDirs.compactMap { path -> FilePath? in
+            let commandURL = URL(fileURLWithPath: command, relativeTo: URL(fileURLWithPath: path, isDirectory: true))
+            return FilePath(commandURL.path())
         }.filter { candidatePath -> Bool in
-            localFileSystem.isExecutableFile(candidatePath)
+            candidatePath.isExecutableFile()
         }.first
     }
 
@@ -37,25 +40,29 @@ extension OutputCachingExecutor.Utility {
         return SHA256.hash(data: stringData).asString
     }
 
-    static func isStaleFile(at path: AbsolutePath, maxAgeInSeconds maxAge: TimeInterval) -> Bool {
-        guard let fileAttributes = try? localFileSystem.getFileInfo(path) else { return true }
-        
-        return Date().timeIntervalSince1970 - fileAttributes.modTime.timeIntervalSince1970 > maxAge
+    static func isStaleFile(at path: FilePath, maxAgeInSeconds maxAge: TimeInterval) -> Bool {
+        guard let modTime = path.modificationDate() else { return true }
+
+        return Date().timeIntervalSince1970 - modTime.timeIntervalSince1970 > maxAge
     }
 
-    static func locateRunDirectory() -> AbsolutePath {
+    static func locateRunDirectory(fileManager: FileManager = .default) -> FilePath {
         guard
-            let appSupportURL = try? FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            let appSupportURL = try? fileManager.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         else {
-            return AbsolutePath("/tmp")
+            return FilePath("/tmp")
         }
-        let appSupportPath = AbsolutePath(appSupportURL.path)
-        return appSupportPath.appending(components: "cacherun")
+        let appSupportPath = FilePath(appSupportURL.path())
+        return appSupportPath.appending("cacherun")
     }
 
     static func findProcess(withPid pid: Int, commandHash: String) throws -> Bool {
-        let ps = try Process.popen(arguments: ["/bin/ps", "-o command=", "-p \(pid)"])
-        let matchingCommand = try ps.utf8Output()
+        let cmd = URL(filePath: "/bin/ps")
+        let args = ["-o command=", "-p \(pid)"]
+        let ps = ProcessPipe.popen(cmd: cmd, args: args)
+        guard let matchingCommand = try ps.readAll() else {
+            return false
+        }
         let matchingCommandHash = try sha256Hash(for: matchingCommand)
         return matchingCommandHash == commandHash
     }
@@ -70,4 +77,3 @@ extension CryptoKit.SHA256.Digest {
         return hashString.joined()
     }
 }
-
