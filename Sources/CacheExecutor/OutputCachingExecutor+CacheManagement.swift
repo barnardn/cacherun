@@ -67,7 +67,7 @@ public extension OutputCachingExecutor.CacheManagement {
             [
             "Hash".padding(toLength: 10, withPad: " ", startingAt: 0),
             "Last Run Date".padding(toLength: 20, withPad: " ", startingAt: 0),
-            "Command"
+            "Command",
             ].joined()
         )
         commandInfo.forEach { cmd in
@@ -77,7 +77,6 @@ public extension OutputCachingExecutor.CacheManagement {
                     cmd.hash.padding(toLength: 10, withPad: " ", startingAt: 0),
                     formattedDate.padding(toLength: 20, withPad: " ", startingAt: 0),
                     cmd.commandLine,
-                    "\n"
                 ].joined()
             )
         }
